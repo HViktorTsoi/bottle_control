@@ -1,10 +1,22 @@
 # coding=utf-8
 from __future__ import print_function, division, generators, absolute_import
 
+from array import array
 import time
+import select
 
 import lcm
 from communication.robot_control_t import robot_control_t
+from communication.laser_t import laser_t
+from communication.pose_t import pose_t
+import pickle as pkl
+
+CH_SEND = 'SEND_COMMAND'
+CH_CHASSIS_INFO = 'TEST_COMMAND'
+CH_LASER_DATA = 'LASER_DATA'
+CH_POSE = 'POSE'
+TIMEOUT = 1.5
+TIME_PRECISION = 100000
 
 
 def request_info():
@@ -16,7 +28,7 @@ def request_info():
     msg = build_control_msg(
         commandid=3
     )
-    lc.publish("SEND_COMMAND", msg.encode())
+    lc.publish(CH_SEND, msg.encode())
 
 
 def protection(laser, sonar, collision):
@@ -31,7 +43,7 @@ def protection(laser, sonar, collision):
         commandid=2,
         iparams=[int(laser), int(sonar), int(collision)]
     )
-    lc.publish("SEND_COMMAND", msg.encode())
+    lc.publish(CH_SEND, msg.encode())
 
 
 def light(bulb_id):
@@ -44,7 +56,7 @@ def light(bulb_id):
         commandid=5,
         iparams=[bulb_id]
     )
-    lc.publish("SEND_COMMAND", msg.encode())
+    lc.publish(CH_SEND, msg.encode())
 
 
 def move(velocity=0, direction=0):
@@ -58,7 +70,7 @@ def move(velocity=0, direction=0):
         commandid=1,
         dparams=[velocity, direction]
     )
-    lc.publish("SEND_COMMAND", msg.encode())
+    lc.publish(CH_SEND, msg.encode())
 
 
 def build_control_msg(commandid, sparams=[], bparams=''.encode(), dparams=[], iparams=[]):
@@ -80,9 +92,81 @@ def build_control_msg(commandid, sparams=[], bparams=''.encode(), dparams=[], ip
     return msg
 
 
+def chassis_info_handler(channel, data):
+    msg = robot_control_t.decode(data)
+    # 判断不同的数据
+    if msg.commandid == 2:
+        print('速度: ', msg.dparams)
+    elif msg.commandid == 3:
+        print('激光状态: ', msg.iparams)
+    elif msg.commandid == 4:
+        print('底盘信息: ', msg.iparams)
+    elif msg.commandid == 5:
+        print('错误信息: ', msg.iparams, msg.bparams.encode())
+    elif msg.commandid == 6:
+        print('温湿度: ', msg.dparams)
+    elif msg.commandid in [7, 8]:
+        print('CAN状态: ', msg.commandid, msg.iparams)
+    elif msg.commandid == 11:
+        print('声呐: ', msg.iparams)
+    elif msg.commandid == 12:
+        print('IMU: ', msg.dparams)
+        print(time.time())
+    else:
+        print('MISC: ', msg.commandid, msg.iparams, msg.dparams, msg.bparams.encode())
+
+
+def get_f32arr_timestamp():
+    """
+    获取浮点列表时间戳
+    :return:
+    """
+    cur_time = time.time() * 1000
+    first, second = cur_time // TIME_PRECISION, cur_time % TIME_PRECISION
+    return [first, second]
+
+
+def laser_info_handler(channel, data):
+    tic = time.time()
+    msg = laser_t.decode(data)
+    print(msg.nranges, msg.nintensities, msg.ranges[400:410])
+    with open('/tmp/laser.bin', 'ab') as file:
+        # 保存距离 反射率 弧度 时间戳信息
+        arr = array(
+            'f', list(msg.ranges) + list(msg.intensities) + [msg.rad0, msg.radstep] + get_f32arr_timestamp())
+        arr.tofile(file)
+    toc = time.time()
+    print('ellipsed', toc - tic)
+
+
+def pose_info_handler(channel, data):
+    msg = pose_t.decode(data)
+    print('XYD: {}; ACC:{}; ORE:{}; ROT:{}'.format(msg.pos, msg.accel, msg.orientation, msg.rotation_rate))
+
+
 if __name__ == '__main__':
+
     lc = lcm.LCM()
-    request_info()
+    subscriptions = [
+        # lc.subscribe(CH_CHASSIS_INFO, chassis_info_handler),  # 底盘通信
+        # lc.subscribe(CH_LASER_DATA, laser_info_handler),  # 激光通信
+        # lc.subscribe(CH_POSE, pose_info_handler),  # 姿态
+    ]
+
+    try:
+        while True:
+            rfds, wfds, efds = select.select([lc.fileno()], [], [], TIMEOUT)
+            if rfds:
+                lc.handle()
+            else:
+                print('Waiting for messages..')
+    except Exception as e:
+        print(e)
+
+    # 注销订阅
+    for subscription in subscriptions: lc.unsubscribe(subscription)
+
+    # request_info()
     # move(0, 0)
     # light(1)
     # time.sleep(1)
