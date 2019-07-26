@@ -1,9 +1,11 @@
 #!/usr/bin/python
 # coding=utf-8
+import time
 
 import pygame
 import pygame.locals
 from pygame.locals import *
+from bottle import Controller
 
 
 class Chassis(pygame.sprite.Sprite):
@@ -12,6 +14,8 @@ class Chassis(pygame.sprite.Sprite):
     MIN_SPEED = -0.9
     MAX_LEADING = 31
     MIN_LEADING = -31
+
+    VELOCITY_CHANGE_WAITING = 3
 
     # 速度 航向角阈值变化
     DELTA_SPEED = 0.05
@@ -24,28 +28,45 @@ class Chassis(pygame.sprite.Sprite):
         self.state = "still"
         self.reinit()
 
+        self.velo_hang = 0
+
+        # 控制包
+        self.controller = Controller()
+        self.controller.protection(False, False, True)
+
     def render(self):
+        self.controller.move(velocity=self.velocity, direction=self.leading)
         print('{} V:{} W:{}'.format(self.state, self.velocity, self.leading))
 
     def reinit(self):
-        self.state = "still"
         self.velocity = 0
         self.leading = 0
         self.state = "still"
 
     def speed_up(self):
-        # 加速
-        self.velocity += self.DELTA_SPEED
-        self.velocity = min(self.velocity, self.MAX_SPEED)
         self.state = "speed_up"
-        self.render()
+        # 等待一段时间再加速
+        if self.velo_hang == 0 or self.velo_hang > self.VELOCITY_CHANGE_WAITING:
+            # 加速
+            self.velocity += self.DELTA_SPEED
+            self.velocity = min(self.velocity, self.MAX_SPEED)
+
+            self.velo_hang = 0
+            self.render()
+
+        self.velo_hang += 1
 
     def speed_down(self):
         # 减速
-        self.velocity -= self.DELTA_SPEED
-        self.velocity = max(self.velocity, self.MIN_SPEED)
         self.state = "speed_down"
-        self.render()
+        if self.velo_hang == 0 or self.velo_hang > self.VELOCITY_CHANGE_WAITING:
+            self.velocity -= self.DELTA_SPEED
+            self.velocity = max(self.velocity, self.MIN_SPEED)
+
+            self.velo_hang = 0
+            self.render()
+
+        self.velo_hang += 1
 
     def lead_left(self):
         # 左打舵
@@ -69,13 +90,26 @@ class Chassis(pygame.sprite.Sprite):
 
     def brake(self):
         self.velocity = 0
+        self.velo_hang = 0
         self.state = "still"
         self.render()
 
     def stop(self):
-        self.velocity = self.leading = 0
+        self.velocity = self.leading = self.velo_hang = 0
         self.state = "still"
         self.render()
+
+
+def render_label(text, screen):
+    # 显示文字
+    font = pygame.font.Font(None, 36)
+    text = font.render(text, 1, (10, 10, 10))
+    textpos = text.get_rect()
+    textpos.centerx = screen.get_rect().centerx
+    textpos.centery = screen.get_rect().centery
+
+    # 附着到屏幕
+    screen.blit(text, textpos)
 
 
 def main():
@@ -84,25 +118,11 @@ def main():
     screen = pygame.display.set_mode((550, 250))
     pygame.display.set_caption('Chassis Control')
 
-    # Fill background
-    background = pygame.Surface(screen.get_size())
-    background = background.convert()
-    background.fill((250, 250, 250))
-
-    # Display some text
-    font = pygame.font.Font(None, 36)
-    text = font.render("Chassis Control", 1, (10, 10, 10))
-    textpos = text.get_rect()
-    textpos.centerx = background.get_rect().centerx
-    background.blit(text, textpos)
-
-    # Blit everything to the screen
-    screen.blit(background, (0, 0))
     pygame.display.flip()
 
     player = Chassis()
     # Event loop
-    pygame.key.set_repeat(1, 100)
+    pygame.key.set_repeat(500, 100)
     while True:
         for event in pygame.event.get():
             if event.type == pygame.locals.QUIT:
@@ -126,7 +146,8 @@ def main():
                 if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
                     player.lead_forward()
 
-        screen.blit(background, (0, 0))
+        screen.fill(pygame.Color('white'))
+        render_label('{} V:{:.02f} W:{:.02f}'.format(player.state, player.velocity, player.leading), screen)
         pygame.display.flip()
 
 
