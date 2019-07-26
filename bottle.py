@@ -7,6 +7,18 @@ import lcm
 from communication.robot_control_t import robot_control_t
 
 
+def request_info():
+    """
+    请求底盘控制信息
+    注意此函数没有回调 返回的底盘信息在返回流中获取
+    :return:
+    """
+    msg = build_control_msg(
+        commandid=3
+    )
+    lc.publish("SEND_COMMAND", msg.encode())
+
+
 def protection(laser, sonar, collision):
     """
     保护措施开关
@@ -70,7 +82,8 @@ def build_control_msg(commandid, sparams=[], bparams=''.encode(), dparams=[], ip
 
 if __name__ == '__main__':
     lc = lcm.LCM()
-    move(0, 0)
+    request_info()
+    # move(0, 0)
     # light(1)
     # time.sleep(1)
     # light(2)
