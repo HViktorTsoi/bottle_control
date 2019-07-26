@@ -19,77 +19,81 @@ TIMEOUT = 1.5
 TIME_PRECISION = 100000
 
 
-def request_info():
+class Controller:
     """
-    请求底盘控制信息
-    注意此函数没有回调 返回的底盘信息在返回流中获取
-    :return:
+    底盘控制
     """
-    msg = build_control_msg(
-        commandid=3
-    )
-    lc.publish(CH_SEND, msg.encode())
 
+    def __init__(self):
+        self.lc = lcm.LCM()
 
-def protection(laser, sonar, collision):
-    """
-    保护措施开关
-    :param laser: 雷达避停
-    :param sonar: 声呐避停
-    :param collision: 前后保险杠避停
-    :return:
-    """
-    msg = build_control_msg(
-        commandid=2,
-        iparams=[int(laser), int(sonar), int(collision)]
-    )
-    lc.publish(CH_SEND, msg.encode())
+    def request_info(self):
+        """
+        请求底盘控制信息
+        注意此函数没有回调 返回的底盘信息在返回流中获取
+        :return:
+        """
+        msg = self._build_control_msg(
+            commandid=3
+        )
+        self.lc.publish(CH_SEND, msg.encode())
 
+    def protection(self, laser, sonar, collision):
+        """
+        保护措施开关
+        :param laser: 雷达避停
+        :param sonar: 声呐避停
+        :param collision: 前后保险杠避停
+        :return:
+        """
+        msg = self._build_control_msg(
+            commandid=2,
+            iparams=[int(laser), int(sonar), int(collision)]
+        )
+        self.lc.publish(CH_SEND, msg.encode())
 
-def light(bulb_id):
-    """
-    灯光信号
-    :param bulb_id: 灯光id
-    :return:
-    """
-    msg = build_control_msg(
-        commandid=5,
-        iparams=[bulb_id]
-    )
-    lc.publish(CH_SEND, msg.encode())
+    def light(self, bulb_id):
+        """
+        灯光信号
+        :param bulb_id: 灯光id
+        :return:
+        """
+        msg = self._build_control_msg(
+            commandid=5,
+            iparams=[bulb_id]
+        )
+        self.lc.publish(CH_SEND, msg.encode())
 
+    def move(self, velocity=0, direction=0):
+        """
+        按照给定速度移动 (默认参数为全0 即停止)
+        :param velocity: 速度(-0.9~0.9)
+        :param direction: 舵角(-31~01)
+        :return:
+        """
+        msg = self._build_control_msg(
+            commandid=1,
+            dparams=[velocity, direction]
+        )
+        self.lc.publish(CH_SEND, msg.encode())
 
-def move(velocity=0, direction=0):
-    """
-    按照给定速度移动 (默认参数为全0 即停止)
-    :param velocity: 速度(-0.9~0.9)
-    :param direction: 舵角(-31~01)
-    :return:
-    """
-    msg = build_control_msg(
-        commandid=1,
-        dparams=[velocity, direction]
-    )
-    lc.publish(CH_SEND, msg.encode())
+    def _build_control_msg(self, commandid, sparams=[], bparams=''.encode(), dparams=[], iparams=[]):
+        msg = robot_control_t()
+        msg.commandid = commandid
 
+        msg.nsparams = len(sparams)
+        msg.sparams = sparams
 
-def build_control_msg(commandid, sparams=[], bparams=''.encode(), dparams=[], iparams=[]):
-    msg = robot_control_t()
-    msg.commandid = commandid
+        msg.nbparams = len(bparams)
+        msg.bparams = bparams
 
-    msg.nsparams = len(sparams)
-    msg.sparams = sparams
+        msg.ndparams = len(dparams)
+        msg.dparams = dparams
 
-    msg.nbparams = len(bparams)
-    msg.bparams = bparams
+        msg.niparams = len(iparams)
+        msg.iparams = iparams
 
-    msg.ndparams = len(dparams)
-    msg.dparams = dparams
-
-    msg.niparams = len(iparams)
-    msg.iparams = iparams
-
-    return msg
+        return msg
 
 
 def chassis_info_handler(channel, data):
@@ -145,26 +149,27 @@ def pose_info_handler(channel, data):
 
 
 if __name__ == '__main__':
-
-    lc = lcm.LCM()
-    subscriptions = [
-        # lc.subscribe(CH_CHASSIS_INFO, chassis_info_handler),  # 底盘通信
-        # lc.subscribe(CH_LASER_DATA, laser_info_handler),  # 激光通信
-        # lc.subscribe(CH_POSE, pose_info_handler),  # 姿态
-    ]
-
-    try:
-        while True:
-            rfds, wfds, efds = select.select([lc.fileno()], [], [], TIMEOUT)
-            if rfds:
-                lc.handle()
-            else:
-                print('Waiting for messages..')
-    except Exception as e:
-        print(e)
-
-    # 注销订阅
-    for subscription in subscriptions: lc.unsubscribe(subscription)
+    controller = Controller()
+    controller.light(2)
+    # lc = lcm.LCM()
+    # subscriptions = [
+    #     # lc.subscribe(CH_CHASSIS_INFO, chassis_info_handler),  # 底盘通信
+    #     # lc.subscribe(CH_LASER_DATA, laser_info_handler),  # 激光通信
+    #     # lc.subscribe(CH_POSE, pose_info_handler),  # 姿态
+    #
+    #]
+    # try:
+    #     while True:
+    #         rfds, wfds, efds = select.select([lc.fileno()], [], [], TIMEOUT)
+    #         if rfds:
+    #             lc.handle()
+    #         else:
+    #             print('Waiting for messages..')
+    # except Exception as e:
+    #     print(e)
+    #
+    # # 注销订阅
+    # for subscription in subscriptions: lc.unsubscribe(subscription)
 
     # request_info()
     # move(0, 0)
