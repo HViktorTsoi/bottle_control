@@ -21,11 +21,11 @@ class Chassis(pygame.sprite.Sprite):
     # 调整速度的帧数间隔
     VELOCITY_CHANGE_INTERVAL = 5
     # 停止给动力之后缓冲的步长(ABS)
-    SOFT_STOP_STEP = 5
+    SOFT_STOP_DELTA = 0.03
 
     # 速度 航向角阈值变化
     DELTA_SPEED = 0.04
-    DELTA_LEADING = 3
+    DELTA_LEADING = 6
 
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
@@ -33,6 +33,8 @@ class Chassis(pygame.sprite.Sprite):
         self.leading = 0
         self.state = "still"
         self.velocity_change_count = 0
+
+        self.is_braking = False  # 刹车状态
 
         self.reinit()
 
@@ -51,15 +53,17 @@ class Chassis(pygame.sprite.Sprite):
         self.state = "still"
 
     def speed_up(self):
+        # 加速
+        self.is_braking = False
         self.state = "speed_up"
         # 等待一段时间再加速
-        # 加速
         if self.velocity < self.MAX_SPEED:
             self.velocity += self.DELTA_SPEED
             self.send_control()
 
     def speed_down(self):
         # 减速
+        self.is_braking = False
         self.state = "speed_down"
         if self.velocity > self.MIN_SPEED:
             self.velocity -= self.DELTA_SPEED
@@ -87,17 +91,24 @@ class Chassis(pygame.sprite.Sprite):
             self.send_control()
 
     def brake(self):
+        # 仅当没有速度时刹车
         if self.velocity != 0:
-            v_diff = (self.velocity - 0)
-            for _ in range(self.SOFT_STOP_STEP):
-                self.velocity -= v_diff / self.SOFT_STOP_STEP
-                time.sleep(0.1)
-                self.send_control()
-            self.state = "still"
-            self.velocity = 0
+            self.is_braking = True
+            # 如果速度较大,则软减速
+            if abs(self.velocity) > self.SOFT_STOP_DELTA:
+                # 获取速度方向
+                v_diff_dir = (self.velocity - 0) / abs(self.velocity)
+                self.velocity -= v_diff_dir * self.SOFT_STOP_DELTA
+                self.state = "breaking"
+            # 如果较小时直接停止
+            else:
+                self.velocity = 0
+                self.state = "still"
+
             self.send_control()
 
     def stop(self):
+        self.is_braking = False
         self.velocity = self.leading = 0
         self.state = "stop"
         self.send_control()
@@ -119,7 +130,7 @@ class Chassis(pygame.sprite.Sprite):
             self.stop()
         else:
             # 动力键没有触发 则停止对应的动作
-            if not (up or down):
+            if self.is_braking or not (up or down):
                 self.brake()
             if not (left or right):
                 self.lead_forward()
@@ -169,11 +180,11 @@ def main():
     # Event loop
     while True:
 
-        # 处理键盘事件
-        chassis.handle_key_action(pygame.key.get_pressed())
-
         # 限制帧数
         clock.tick(FPS)
+
+        # 处理键盘事件
+        chassis.handle_key_action(pygame.key.get_pressed())
 
         for event in pygame.event.get():
             if event.type == pygame.locals.QUIT:
