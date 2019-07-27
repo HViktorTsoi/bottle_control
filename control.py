@@ -8,7 +8,7 @@ from pygame.locals import *
 from bottle import Controller
 import pygame.time
 
-FPS = 10
+FPS = 20
 
 
 class Chassis(pygame.sprite.Sprite):
@@ -19,7 +19,9 @@ class Chassis(pygame.sprite.Sprite):
     MIN_LEADING = -31
 
     # 调整速度的帧数间隔
-    VELOCITY_CHANGE_INTERVAL = 3
+    VELOCITY_CHANGE_INTERVAL = 5
+    # 停止给动力之后缓冲的步长(ABS)
+    SOFT_STOP_STEP = 5
 
     # 速度 航向角阈值变化
     DELTA_SPEED = 0.04
@@ -37,6 +39,7 @@ class Chassis(pygame.sprite.Sprite):
         # 控制包
         self.controller = Controller()
         self.controller.protection(False, False, True)
+        self.controller.start_heartbeat()
 
     def send_control(self):
         self.controller.move(velocity=self.velocity, direction=self.leading)
@@ -85,8 +88,13 @@ class Chassis(pygame.sprite.Sprite):
 
     def brake(self):
         if self.velocity != 0:
-            self.velocity = 0
+            v_diff = (self.velocity - 0)
+            for _ in range(self.SOFT_STOP_STEP):
+                self.velocity -= v_diff / self.SOFT_STOP_STEP
+                time.sleep(0.1)
+                self.send_control()
             self.state = "still"
+            self.velocity = 0
             self.send_control()
 
     def stop(self):
@@ -118,7 +126,8 @@ class Chassis(pygame.sprite.Sprite):
 
             # 处理对应的指令
             # 速度要间隔处理
-            if self.velocity_change_count > self.VELOCITY_CHANGE_INTERVAL:
+            if self.velocity_change_count == 0 \
+                    or self.velocity_change_count > self.VELOCITY_CHANGE_INTERVAL:
                 # 上下互斥
                 if up:
                     self.speed_up()
@@ -160,14 +169,16 @@ def main():
     # Event loop
     while True:
 
-        # 限制帧数
-        clock.tick(FPS)
-
         # 处理键盘事件
         chassis.handle_key_action(pygame.key.get_pressed())
 
+        # 限制帧数
+        clock.tick(FPS)
+
         for event in pygame.event.get():
             if event.type == pygame.locals.QUIT:
+                # 停止发心跳包
+                chassis.controller.stop_heartbeat()
                 return
 
         # 渲染新的画面

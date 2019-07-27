@@ -4,6 +4,7 @@ from __future__ import print_function, division, generators, absolute_import
 from array import array
 import time
 import select
+import multiprocessing
 
 import lcm
 from communication.robot_control_t import robot_control_t
@@ -26,6 +27,50 @@ class Controller:
 
     def __init__(self):
         self.lc = lcm.LCM()
+        self._heartbeat_process = None
+        self._heartbeat_time = None
+
+    def __del__(self):
+        self.stop_heartbeat()
+
+    def start_heartbeat(self, interval=0.1):
+        """
+        开启心跳包发送进程
+        :param interval: 发送心跳包的时间间隔
+        :return:
+        """
+        # 发送心跳包的进程
+        self._heartbeat_time = multiprocessing.Value("d", interval)  # 心跳时间(s) 进程内共享变量
+        self._heartbeat_process = \
+            multiprocessing.Process(target=self._heartbeat_daemon, args=(self._heartbeat_time,))
+        self._heartbeat_process.start()
+
+    def stop_heartbeat(self):
+        """
+        结束发心跳包
+        """
+        if self._heartbeat_process:
+            print('stop')
+            self._heartbeat_time.value = 0
+            self._heartbeat_process.join()
+            self._heartbeat_process = None
+
+    def _heartbeat_daemon(self, heartbeat_time):
+        while heartbeat_time.value > 0:
+            self.heartbeat(heartbeat_time.value * 30)
+            time.sleep(heartbeat_time.value)
+
+    def heartbeat(self, time):
+        """
+        发送心跳信号
+        :param time:
+        :return:
+        """
+        msg = self._build_control_msg(
+            commandid=4,
+            dparams=[time]
+        )
+        self.lc.publish(CH_SEND, msg.encode())
 
     def request_info(self):
         """
@@ -64,7 +109,7 @@ class Controller:
         )
         self.lc.publish(CH_SEND, msg.encode())
 
-    def move(self, velocity=0, direction=0):
+    def move(self, velocity=0.0, direction=0.0):
         """
         按照给定速度移动 (默认参数为全0 即停止)
         :param velocity: 速度(-0.9~0.9)
@@ -150,14 +195,24 @@ def pose_info_handler(channel, data):
 
 if __name__ == '__main__':
     controller = Controller()
+    controller.start_heartbeat()
+    controller.protection(False, False, True)
+    # controller.heartbeat(time=3)
+    controller.light(1)
+    time.sleep(1)
     controller.light(2)
+    # controller.move(-0.1, 0)
+    controller.move(0, 10)
+    time.sleep(2)
+    controller.move(0, 0)
+    controller.stop_heartbeat()
     # lc = lcm.LCM()
     # subscriptions = [
     #     # lc.subscribe(CH_CHASSIS_INFO, chassis_info_handler),  # 底盘通信
     #     # lc.subscribe(CH_LASER_DATA, laser_info_handler),  # 激光通信
     #     # lc.subscribe(CH_POSE, pose_info_handler),  # 姿态
     #
-    #]
+    # ]
     # try:
     #     while True:
     #         rfds, wfds, efds = select.select([lc.fileno()], [], [], TIMEOUT)
