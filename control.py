@@ -180,7 +180,8 @@ def render_label(text, screen):
 def main():
     # Initialise screen
     pygame.init()
-    screen = pygame.display.set_mode((550, 250))
+    pygame.mixer.quit()
+    screen = pygame.display.set_mode((1000, 600))
     pygame.display.set_caption('Chassis Control')
 
     pygame.display.flip()
