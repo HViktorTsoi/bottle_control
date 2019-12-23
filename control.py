@@ -7,6 +7,8 @@ import pygame.locals
 from pygame.locals import *
 from bottle import Controller
 import pygame.time
+import rospy
+from std_msgs.msg import String
 
 FPS = 20
 
@@ -42,6 +44,10 @@ class Chassis(pygame.sprite.Sprite):
         self.controller = Controller()
         self.controller.protection(False, False, True)
         self.controller.start_heartbeat()
+
+        # ros通信
+        self.ros_publisher = rospy.Publisher('/BOTTLE_HUMAN_INTERVATION', String, queue_size=1)
+        rospy.init_node('bottle_controller_gui', anonymous=True)
 
     def send_control(self):
         self.controller.move(velocity=self.velocity, direction=self.leading)
@@ -95,7 +101,7 @@ class Chassis(pygame.sprite.Sprite):
         if self.velocity != 0:
             self.is_braking = True
             # 如果速度较大,则软减速
-            if abs(self.velocity) > self.SOFT_STOP_DELTA:
+            if abs(self.velocity) > 2 * self.SOFT_STOP_DELTA:
                 # 获取速度方向
                 v_diff_dir = (self.velocity - 0) / abs(self.velocity)
                 self.velocity -= v_diff_dir * self.SOFT_STOP_DELTA
@@ -119,14 +125,19 @@ class Chassis(pygame.sprite.Sprite):
         :param key_pressed:
         :return:
         """
-        up, down, left, right, space = key_pressed[pygame.K_UP], \
-                                       key_pressed[pygame.K_DOWN], \
-                                       key_pressed[pygame.K_LEFT], \
-                                       key_pressed[pygame.K_RIGHT], \
-                                       key_pressed[pygame.K_SPACE]
+        up, down, left, right, space, esc = key_pressed[pygame.K_UP], \
+                                            key_pressed[pygame.K_DOWN], \
+                                            key_pressed[pygame.K_LEFT], \
+                                            key_pressed[pygame.K_RIGHT], \
+                                            key_pressed[pygame.K_SPACE], \
+                                            key_pressed[pygame.K_ESCAPE]
         # 键盘驱动
-        if space:
-            # 停止键优先级最高
+        if esc:
+            # 人工干预停止优先级最高
+            self.ros_publisher.publish('STOP')
+            print('HUMAN-STOP')
+        elif space:
+            # 停止键
             self.stop()
         else:
             # 动力键没有触发 则停止对应的动作
