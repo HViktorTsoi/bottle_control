@@ -23,7 +23,7 @@ class Chassis(pygame.sprite.Sprite):
     # 调整速度的帧数间隔
     VELOCITY_CHANGE_INTERVAL = 5
     # 停止给动力之后缓冲的步长(ABS)
-    SOFT_STOP_DELTA = 0.03
+    SOFT_STOP_DELTA = 0.01
 
     # 速度 航向角阈值变化
     DELTA_SPEED = 0.04
@@ -119,18 +119,23 @@ class Chassis(pygame.sprite.Sprite):
         self.state = "stop"
         self.send_control()
 
+    def request_info(self):
+        self.controller.request_info()
+
     def handle_key_action(self, key_pressed):
         """
         处理键盘对应动作
         :param key_pressed:
         :return:
         """
-        up, down, left, right, space, esc = key_pressed[pygame.K_UP], \
-                                            key_pressed[pygame.K_DOWN], \
-                                            key_pressed[pygame.K_LEFT], \
-                                            key_pressed[pygame.K_RIGHT], \
-                                            key_pressed[pygame.K_SPACE], \
-                                            key_pressed[pygame.K_ESCAPE]
+        up, down, left, right, space, esc, F5 = key_pressed[pygame.K_UP], \
+                                                key_pressed[pygame.K_DOWN], \
+                                                key_pressed[pygame.K_LEFT], \
+                                                key_pressed[pygame.K_RIGHT], \
+                                                key_pressed[pygame.K_SPACE], \
+                                                key_pressed[pygame.K_ESCAPE], \
+                                                key_pressed[pygame.K_F5],
+
         # 键盘驱动
         if esc:
             # 人工干预停止优先级最高
@@ -139,6 +144,9 @@ class Chassis(pygame.sprite.Sprite):
         elif space:
             # 停止键
             self.stop()
+        elif F5:
+            self.request_info()
+            print('Request info sent.')
         else:
             # 动力键没有触发 则停止对应的动作
             if self.is_braking or not (up or down):
@@ -189,6 +197,8 @@ def main():
     clock = pygame.time.Clock()
 
     chassis = Chassis()
+
+    battery_query_counter = 0
     # Event loop
     while True:
 
@@ -198,6 +208,14 @@ def main():
         # 处理键盘事件
         chassis.handle_key_action(pygame.key.get_pressed())
 
+        # request chassis info in time
+        if battery_query_counter > 60:
+            chassis.controller.request_info()
+            battery_query_counter = 0
+        # query chassis messages
+        chassis.controller.query_messages()
+        battery_query_counter += 1
+
         for event in pygame.event.get():
             if event.type == pygame.locals.QUIT:
                 # 停止发心跳包
@@ -206,7 +224,12 @@ def main():
 
         # 渲染新的画面
         screen.fill(pygame.Color('white'))
-        render_label('{} V:{:.02f} W:{:.02f}'.format(chassis.state, chassis.velocity, chassis.leading), screen)
+        render_label('BATTERY:{}%    {} V:{:.02f} W:{:.02f}\n'.format(
+            chassis.controller.chassis_info[1],
+            chassis.state,
+            chassis.velocity,
+            chassis.leading,
+        ), screen)
         pygame.display.flip()
 
 

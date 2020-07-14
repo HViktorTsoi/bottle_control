@@ -11,6 +11,10 @@ from communication.robot_control_t import robot_control_t
 from communication.laser_t import laser_t
 from communication.pose_t import pose_t
 import pickle as pkl
+import os
+import sys
+
+os.environ['LCM_DEFAULT_URL'] = 'udpm://224.0.0.1:7667?ttl=1'
 
 CH_SEND = 'SEND_COMMAND'
 CH_CHASSIS_INFO = 'TEST_COMMAND'
@@ -18,6 +22,8 @@ CH_LASER_DATA = 'LASER_DATA'
 CH_POSE = 'POSE'
 TIMEOUT = 1.5
 TIME_PRECISION = 100000
+
+CHASSIS_INFO = [0 for _ in range(19)]
 
 
 class Controller:
@@ -29,6 +35,8 @@ class Controller:
         self.lc = lcm.LCM()
         self._heartbeat_process = None
         self._heartbeat_time = None
+        self.lc.subscribe(CH_CHASSIS_INFO, chassis_info_handler)
+        self.chassis_info = CHASSIS_INFO
 
     def __del__(self):
         self.stop_heartbeat()
@@ -113,7 +121,7 @@ class Controller:
         """
         按照给定速度移动 (默认参数为全0 即停止)
         :param velocity: 速度(-0.9~0.9)
-        :param direction: 舵角(-31~01)
+        :param direction: 舵角(-31~31)
         :return:
         """
         msg = self._build_control_msg(
@@ -121,6 +129,14 @@ class Controller:
             dparams=[velocity, direction]
         )
         self.lc.publish(CH_SEND, msg.encode())
+
+    def query_messages(self):
+        """
+        query messages from chassis
+        :return:
+        """
+        self.lc.handle()
+        self.chassis_info = CHASSIS_INFO
 
     def _build_control_msg(self, commandid, sparams=[], bparams=''.encode(), dparams=[], iparams=[]):
         msg = robot_control_t()
@@ -142,6 +158,14 @@ class Controller:
 
 
 def chassis_info_handler(channel, data):
+    global CHASSIS_INFO
+    msg = robot_control_t.decode(data)
+    if msg.commandid == 4:
+        print('底盘信息: ', msg.iparams)
+        CHASSIS_INFO = msg.iparams
+
+
+def chassis_data_handler(channel, data):
     msg = robot_control_t.decode(data)
     # 判断不同的数据
     if msg.commandid == 2:
@@ -195,17 +219,13 @@ def pose_info_handler(channel, data):
 
 if __name__ == '__main__':
     controller = Controller()
-    controller.start_heartbeat()
+    # controller.start_heartbeat()
     controller.protection(False, False, True)
     # controller.heartbeat(time=3)
-    controller.light(1)
-    time.sleep(1)
-    controller.light(2)
+    if len(sys.argv) > 1:
+        controller.light(int(sys.argv[1]))
+
     # controller.move(-0.1, 0)
-    controller.move(0, 10)
-    time.sleep(2)
-    controller.move(0, 0)
-    controller.stop_heartbeat()
     # lc = lcm.LCM()
     # subscriptions = [
     #     # lc.subscribe(CH_CHASSIS_INFO, chassis_info_handler),  # 底盘通信
