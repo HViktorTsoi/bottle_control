@@ -172,6 +172,16 @@ class Chassis(pygame.sprite.Sprite):
             elif right:
                 self.lead_right()
 
+        # # screen control
+        # if key_pressed[pygame.K_F11]:
+        #     if not FULLSCREEN_MODE:
+        #         pygame.display.set_mode(size=(800, 600), flags=FULLSCREEN)
+        #         FULLSCREEN_MODE = True
+
+        if key_pressed[pygame.K_c] and pygame.key.get_mods() == pygame.KMOD_LCTRL:
+            pygame.quit()
+            exit(0)
+
 
 def render_label(text, screen):
     # 显示文字
@@ -213,7 +223,7 @@ def main():
             chassis.controller.request_info()
             battery_query_counter = 0
         # query chassis messages
-        chassis.controller.query_messages()
+        # chassis.controller.query_messages()
         battery_query_counter += 1
 
         for event in pygame.event.get():
